@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 TIMEOUT_SEC: float = 30.0  #타임아웃 기준 설정(30초)
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("오케스트레이션-백엔드")
+logger = logging.getLogger("오케스트레이트-백엔드")
 
 load_dotenv()
 IBM_API_KEY = os.getenv('IBM_API_KEY')
@@ -90,7 +90,7 @@ async def get_ibm_token():
             )
 
 
-#메인 API -> Watsonx 오케스트레이션 챗봇 데이터 fetch
+#메인 API -> Watsonx 오케스트레이트 챗봇 데이터 fetch
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_with_agent(request_data: ChatRequest):
     async with httpx.AsyncClient() as client:
@@ -98,7 +98,7 @@ async def chat_with_agent(request_data: ChatRequest):
             # 1) IBM Cloud IAM 토큰 확보
             token = await get_ibm_token()
 
-            # 2) Watsonx 오케스트레이션 API 요청 설정
+            # 2) Watsonx 오케스트레이트 API 요청 설정
             headers = {
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/json",
