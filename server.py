@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
-TIMEOUT_SEC: float = 20.0  #타임아웃 기준 설정(20초)
+TIMEOUT_SEC: float = 30.0  #타임아웃 기준 설정(30초)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("오케스트레이션-백엔드")
@@ -49,7 +49,7 @@ class ChatResponse(BaseModel):
 
 #전역 예외 처리기
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"[System Error] 예기치 못한 시스템 오류 발생: {str(exc)}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -62,7 +62,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 
 # IBM Cloud IAM 토큰 발급
-async def get_ibm_token() -> str:
+async def get_ibm_token():
     if not IBM_API_KEY:
         logger.critical("[Config Error] IBM_API_KEY가 환경 변수에 설정되지 않았습니다.")
         raise HTTPException(
@@ -92,7 +92,7 @@ async def get_ibm_token() -> str:
 
 #메인 API -> Watsonx 오케스트레이션 챗봇 데이터 fetch
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat_with_agent(request_data: ChatRequest) -> Dict[str, Any]:
+async def chat_with_agent(request_data: ChatRequest):
     async with httpx.AsyncClient() as client:
         try:
             # 1) IBM Cloud IAM 토큰 확보
@@ -106,7 +106,7 @@ async def chat_with_agent(request_data: ChatRequest) -> Dict[str, Any]:
             }
 
             # 2-1) 엔드포인트 설정
-            endpoint = f"{BASE_URL}/chat/completions"
+            endpoint = f"{BASE_URL}/agents/{AGENT_ID}/chat"
             payload = {
                 "input": request_data.user_query,
                 "context": {}
@@ -115,14 +115,22 @@ async def chat_with_agent(request_data: ChatRequest) -> Dict[str, Any]:
             logger.info(f"[Request] Watsonx 오케스트레이트 데이터 Fetch 시도: {request_data.user_query}")
 
             # 3) Watsonx 오케스트레이트 서버 통신
-            response = await client.post(endpoint, json=payload, headers=headers, timeout=20.0)
+            response = await client.post(endpoint, json=payload, headers=headers, timeout=TIMEOUT_SEC)
 
             # 3-1) 응답 상태 확인 및 예외 발생
             response.raise_for_status()
 
             # 4) 데이터 가공
-            result: Dict[str, Any] = response.json()
-            answer: str = result.get("output", "Watsonx 오케스트레이트 에이전트로부터 답변을 받지 못했습니다.")
+            result = response.json()
+
+            results = result.get("results", [])
+            if results and len(results) > 0:
+                inner_data = results[0].get("data", {})
+                answer = inner_data.get("output", result.get("output", "결과 텍스트를 찾을 수 없습니다."))
+                logger.info("[Success] 도구(Skill) 실행 데이터 포함 응답 완료")
+            else:
+                answer = result.get("output", "에이전트로부터 응답이 없습니다.")
+                logger.info("[Success] 일반 대화 응답 완료")
 
             logger.info("[Success] Watsonx 오케스트레이트 데이터 Fetch 완료")
 
