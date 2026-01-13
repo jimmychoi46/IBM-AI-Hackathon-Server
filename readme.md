@@ -48,7 +48,7 @@ Base URL: http://localhost:8000
 
 사용자의 질문을 백엔드를 거쳐 Watsonx 오케스트레이트에 전달, 응답을 받아옵니다.
 
-Request Body (JSON)
+### Request Body (JSON)
 
 JSON 필수 필드 (JSON 요청을 위함)
 
@@ -60,7 +60,7 @@ JSON 요청 예시
 {
   "user_query": "서울 시청 위치와 근처 맛집 알려줘"
 }
-Response Body (JSON)
+### Response Body (JSON)
 
 JSON 반환 필드
 
