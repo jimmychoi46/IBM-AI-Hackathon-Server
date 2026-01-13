@@ -21,13 +21,15 @@ pip install fastapi==0.115.6 uvicorn==0.34.0 httpx==0.28.1 python-dotenv==1.0.1
 
 
 ### IBM Cloud 인증 및 인스턴스 정보
+
 IBM_API_KEY=your_actual_api_key_here
+
 INSTANCE_ID=your_actual_instance_id_here
 
 ### 서비스 리전 (기본값: us-south)
 REGION=us-south
 
-### Watsonx 오케스트레이트 에이전트 정보 (Supervisor ID 권장)
+### Watsonx 오케스트레이트 에이전트 정보 (Supervisor Agent의 Agent ID 사용 권장)
 AGENT_ID=your_actual_agent_id_here
 
 
@@ -35,8 +37,10 @@ AGENT_ID=your_actual_agent_id_here
 
 서버 메인 파일명이 server.py인 경우, 아래 명령어로 서버를 시작합니다.
 
-
+```python
 python server.py
+```
+
 Base URL: http://localhost:8000
 
 대화형 API 문서 (Swagger): http://localhost:8000/docs
@@ -57,11 +61,11 @@ Base URL: http://localhost:8000
 
 2) JSON 요청 예시
 
-
+```json
    {
      "user_query": "서울 시청 위치와 근처 맛집 알려줘"
    }
-   
+```
 ### Response Body (JSON)
 
 1) JSON 반환 필드
@@ -75,7 +79,7 @@ Base URL: http://localhost:8000
 2) JSON 응답 예시
 
 
-
+```json
    {
      "status": "success",
      "answer": "서울 시청은 중구에 위치해 있으며...",
@@ -90,7 +94,7 @@ Base URL: http://localhost:8000
        ]
      }
    }
-
+```
 
 ## 5.상세 예외 처리 가이드
 
@@ -100,7 +104,9 @@ Base URL: http://localhost:8000
 
 - 503 Service Unavailable: 연결 오류(IBM Cloud 서버 접속 불가) -> 네트워크 확인 필요.
 
-- 504 Gateway Timeout: 시간 초과(Watsonx 오케스트레이트 응답 지연 (설정 시간:총 60초[접속 10초 + 데이터 전송 50초])) -> 잠시 후 재시도 권장.
+- 504 Gateway Timeout: 시간 초과(Watsonx 오케스트레이트 응답 지연 (설정 시간:총 60초[접속 10초 + 데이터 전송 50초]))
+- 
+  -> 잠시 후 재시도 권장.
 
 - 500 Internal Server Error: Unexpected Error(백엔드 내부 로직 오류 발생)
 
