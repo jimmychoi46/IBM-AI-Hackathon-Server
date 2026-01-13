@@ -19,14 +19,14 @@ pip install fastapi==0.115.6 uvicorn==0.34.0 httpx==0.28.1 python-dotenv==1.0.1
 ※ 해당 부분은 해당 에이전트를 구축한 담당자의 정보를 입력해주시길 바랍니다.
 
 
-# IBM Cloud 인증 및 인스턴스 정보
+### IBM Cloud 인증 및 인스턴스 정보
 IBM_API_KEY=your_actual_api_key_here
 INSTANCE_ID=your_actual_instance_id_here
 
-# 서비스 리전 (기본값: us-south)
+### 서비스 리전 (기본값: us-south)
 REGION=us-south
 
-# Watsonx 오케스트레이트 에이전트 정보
+### Watsonx 오케스트레이트 에이전트 정보
 AGENT_ID=your_actual_agent_id_here
 
 
