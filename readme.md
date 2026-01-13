@@ -57,9 +57,9 @@ Base URL: http://localhost:8000
 2) JSON 요청 예시
 
 
-{
-  "user_query": "서울 시청 위치와 근처 맛집 알려줘"
-}
+   {
+     "user_query": "서울 시청 위치와 근처 맛집 알려줘"
+   }
 ### Response Body (JSON)
 
 1) JSON 반환 필드
@@ -73,18 +73,18 @@ Base URL: http://localhost:8000
 2) JSON 응답 예시
 
 
-{
-  "status": "success",
-  "answer": "서울 시청은 중구에 위치해 있으며...",
-  "data": {
-    "output": "...",
-    "context": {},
-    "skill_result": {
-      "lat": 37.5665,
-      "lng": 126.9780
-    }
-  }
-}
+   {
+     "status": "success",
+     "answer": "서울 시청은 중구에 위치해 있으며...",
+     "data": {
+       "output": "...",
+       "context": {},
+       "skill_result": {
+         "lat": 37.5665,
+         "lng": 126.9780
+       }
+     }
+   }
 
 
 ## 5.상세 예외 처리 가이드
