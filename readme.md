@@ -50,11 +50,11 @@ Base URL: http://localhost:8000
 
 ### Request Body (JSON)
 
-JSON 필수 필드 (JSON 요청을 위함)
+1) JSON 필수 필드 (JSON 요청을 위함)
 
  - user_query (String): 챗봇에게 전달할 사용자 질문 메시지
 
-JSON 요청 예시
+2) JSON 요청 예시
 
 
 {
@@ -62,7 +62,7 @@ JSON 요청 예시
 }
 ### Response Body (JSON)
 
-JSON 반환 필드
+1) JSON 반환 필드
 
  - status (String): 성공 여부 ("success")
 
@@ -70,7 +70,7 @@ JSON 반환 필드
 
  - data (Object): Watsonx 오케스트레이트 원본 데이터
 
-JSON 응답 예시
+2) JSON 응답 예시
 
 
 {
