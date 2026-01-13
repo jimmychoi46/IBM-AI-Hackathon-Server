@@ -9,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
-timeout = httpx.Timeout(60.0, connect=10.0, read=50.0)  #타임아웃 기준 설정(접속 10초, 데이터 전송 50초, 총 60초)
+TIMEOUT_SEC = 60.0
+timeout = httpx.Timeout(TIMEOUT_SEC, connect=10.0, read=50.0)  #타임아웃 기준 설정(접속 10초, 데이터 전송 50초, 총 60초)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("오케스트레이트-백엔드")
@@ -122,14 +123,27 @@ async def chat_with_agent(request_data: ChatRequest):
 
             # 4) 데이터 가공
             result = response.json()
-
             results = result.get("results", [])
+
+            
+            answer = result.get("output", "")
+
             if results and len(results) > 0:
                 inner_data = results[0].get("data", {})
-                answer = inner_data.get("output", result.get("output", "결과 텍스트를 찾을 수 없습니다."))
+                
+                # 결과 텍스트가 없을 경우 내부 데이터에서 탐색
+                if not answer:
+                    answer = inner_data.get("output", "")
+                
+                # 경로 데이터가 포함된 경우의 처리 (ex. OpenTripPlanner Agent의 호출)
+                if not answer and "trip" in inner_data:
+                    answer = "경로 탐색 결과가 도착했습니다. 상세 데이터를 확인해 주세요."
+                
                 logger.info("[Success] 도구(Skill) 실행 데이터 포함 응답 완료")
             else:
-                answer = result.get("output", "에이전트로부터 응답이 없습니다.")
+                # 일반적인 응답이 존재하지 않는 경우
+                if not answer:
+                    answer = "에이전트로부터 응답이 없습니다."
                 logger.info("[Success] 일반 대화 응답 완료")
 
             logger.info("[Success] Watsonx 오케스트레이트 데이터 Fetch 완료")
@@ -152,7 +166,7 @@ async def chat_with_agent(request_data: ChatRequest):
             logger.error(f"[Timeout Error] Watsonx 오케스트레이트 서버 응답 시간 초과(설정 기간: {TIMEOUT_SEC}s).")
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                detail="[시간 초과] Watsonx 오케스트레이트 서버의 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."
+                detail=f"[시간 초과] 에이전트가 {int(TIMEOUT_SEC)}초 내에 응답하지 않았습니다. 잠시 후 다시 시도해 주세요."
             )
 
         except httpx.HTTPStatusError as e:
