@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
-TIMEOUT_SEC: float = 30.0  #타임아웃 기준 설정(30초)
+timeout = httpx.Timeout(60.0, connect=10.0, read=50.0)  #타임아웃 기준 설정(접속 10초, 데이터 전송 50초, 총 60초)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("오케스트레이트-백엔드")
@@ -115,7 +115,7 @@ async def chat_with_agent(request_data: ChatRequest):
             logger.info(f"[Request] Watsonx 오케스트레이트 데이터 Fetch 시도: {request_data.user_query}")
 
             # 3) Watsonx 오케스트레이트 서버 통신
-            response = await client.post(endpoint, json=payload, headers=headers, timeout=TIMEOUT_SEC)
+            response = await client.post(endpoint, json=payload, headers=headers, timeout=timeout)
 
             # 3-1) 응답 상태 확인 및 예외 발생
             response.raise_for_status()
