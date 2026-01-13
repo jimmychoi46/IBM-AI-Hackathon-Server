@@ -26,7 +26,7 @@ INSTANCE_ID=your_actual_instance_id_here
 ### 서비스 리전 (기본값: us-south)
 REGION=us-south
 
-### Watsonx 오케스트레이트 에이전트 정보
+### Watsonx 오케스트레이트 에이전트 정보 (Supervisor ID 권장)
 AGENT_ID=your_actual_agent_id_here
 
 
@@ -73,16 +73,19 @@ Base URL: http://localhost:8000
 2) JSON 응답 예시
 
 
+
    {
      "status": "success",
      "answer": "서울 시청은 중구에 위치해 있으며...",
      "data": {
-       "output": "...",
-       "context": {},
-       "skill_result": {
-         "lat": 37.5665,
-         "lng": 126.9780
-       }
+       "results": [
+         {
+           "data": {
+             "output": "서울 시청은 중구에 위치해 있으며...",
+             "skill_result": { "lat": 37.5665, "lng": 126.9780 }
+           }
+         }
+       ]
      }
    }
 
