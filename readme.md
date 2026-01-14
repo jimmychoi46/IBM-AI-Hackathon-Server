@@ -1,6 +1,10 @@
-# Watsonx 오케스트레이트 연동 (Backend)
+# Watsonx 오케스트레이트 연동 
 
-이 파일은 백엔드 서버의 설정, 실행 및 프론트엔드 협업을 위한 통합 가이드입니다. (서버 구동부터 API 연동까지 과정 확인 가능)
+이 파일은 백엔드 서버의 설정, 실행 및 프론트엔드 협업을 위한 통합 가이드입니다. 
+
+에이전트의 비동기 연산 특성에 따라 엔드포인트로는 POST 와 GET을 사용하였습니다. 
+
+-> 각 엔드포인트에 대한 설명은 '4. 프론트엔드 API 연동 명세'를 참고 바랍니다.
 
 ---
 
@@ -31,7 +35,7 @@ REGION=us-south
 ### Watsonx 오케스트레이트 에이전트 정보 (Supervisor Agent의 Agent ID 사용 권장)
 AGENT_ID=당신의_에이전트_id
 
-AGENT_ENVIRONMENT_ID=당신의_에이전트_environment_id # 필요 시
+AGENT_ENVIRONMENT_ID=당신의_에이전트_environment_id 
 
 ## 3. 서버 실행 방법
 
@@ -49,21 +53,25 @@ Base URL: http://localhost:8000
 
 ## 4. 프론트엔드 API 연동 명세 (API Guide)
 
-[POST] /api/chat
+
+## 1. [POST] /api/chat
 
 사용자의 질문을 백엔드를 거쳐 Watsonx 오케스트레이트에 전달, 응답을 받아옵니다.
 
 ### Request Body (JSON)
 
-1) JSON 필수 필드 (JSON 요청을 위함)
+1) JSON 필드 (JSON 요청을 위함)
 
-   - user_query (String): 챗봇에게 전달할 사용자 질문 메시지
+   - user_query (String) [필수]: 챗봇에게 전달할 사용자 질문 메시지
+  
+   - thread_id (string) [선택] 대화 문맥 유지를 위한 세션 ID(첫 질문 일 경우에는 생략 혹은 예시처럼 string으로 표기)-> 응답으로 받은 ID를 이후 요청에 재사용
 
-2) JSON 요청 예시 (JSON 응답과의 통일성 유지를 위해 마찬가지로 OpenTripPlanner Agent의 instruction에서 발췌 후 일부 수정[예시는 실제와 다를 수 있음]) 
+2) JSON 요청 예시
 
 ```json
    {
-     "user_query": "현재 위치에서 태릉입구역 3번 출구까지 가는 방법 알려줘"
+     "user_query": "노들섬에서 국립중앙박물관 가는 법 알려줘"
+     "thread_id": "string"
    }
 ```
 ### Response Body (JSON)
@@ -72,34 +80,77 @@ Base URL: http://localhost:8000
 
    - status (String): 성공 여부 ("success")
 
-   - answer (String): 사용자에게 보여줄 챗봇의 최종 답변 텍스트
+   - run_id: 작업 상태 조회를 위한 Job ID (GET 요청에 필요한 필드)
 
-   - data (Object): Watsonx 오케스트레이트 원본 데이터
+   - thread_id: 현재 대화 세션 ID (문맥 유지를 위해서는 프론트엔드에서 저장 필수)
 
-2) JSON 응답 예시 (OpenTripPlanner Agent의 instruction에서 발췌 후 일부 수정[예시는 실제와 다를 수 있음])
+2) JSON 응답 예시
 
 
 ```json
 {
-    "status": "success",
-    "answer": "태릉입구역 3번 출구까지 총 19.6km, 약 51분 소요되는 경로를 찾았습니다.",
-    "data": {
-        "trip": {
-            "tripPatterns": [
-                {
-                    "aimedStartTime": "2026-01-11T17:34:28+09:00",
-                    "distance": 19626.6,
-                    "legs": [
-                        { "mode": "foot", "toPlace": { "name": "태릉입구역3번출구" } }
-                    ]
-                }
-            ]
-        }
-    }
+   "status": "success",
+  "run_id": "8309bf4a-b8fd-4120-80d5-8a7df40dffd1",
+  "thread_id": "f4b984f8-4ab6-4147-9663-05a21301e9f4"
 }
 ```
 
-## 5.상세 예외 처리 가이드
+## 2. [GET] /api/chat/status/{run_id}
+
+POST 응답을 통해 반환된된 run_id를 사용하여 에이전트의 작업 완료 여부 확인 및 정제된 데이터 수신을 수행합니다.
+
+### 1) Path Parameter (필수 인자)
+
+   - run_id (String): POST /api/chat의 응답으로 받은 고유 식별자
+
+### 2) Response Body (JSON 반환 필드 설명)
+
+   - status (String): 현재 상태 ("running": 작업 중, "completed": 작업 완료)
+
+   - answer (String): 완료 시 에이전트가 작성한 최종 텍스트 답변
+
+   - itineraries (Array): 지도 UI 구성을 위한 정제된 경로 상세 데이터 배열
+ 
+### 3) 응답 예시 (예시의 경우 Completed)
+```json
+{
+  "status": "completed",
+  "answer": "노들섬에서 국립중앙박물관까지의 경로 안내입니다.",
+  "itineraries": [ { "duration": 1707, "legs": [...] } ]
+}
+```
+
+
+## 5. Flutter 연동 가이드
+
+아래의 폴링(Polling) 로직을 적용하십시오.
+
+### 1. 연동 워크플로우
+   1) POST /api/chat으로 run_id 획득
+
+   2) GET /api/chat/status/{run_id}를 3~5초 간격으로 호출 (Polling)
+
+   3) 응답의 status가 "completed"가 될 때까지 로딩 화면 유지
+
+### 2. Dart 데이터 모델
+
+```dart
+class AgentResponse {
+  final String status;
+  final String answer;
+  final List<dynamic> itineraries;
+
+  AgentResponse({required this.status, required this.answer, required this.itineraries});
+
+  factory AgentResponse.fromJson(Map<String, dynamic> json) => AgentResponse(
+    status: json['status'] ?? '',
+    answer: json['answer'] ?? '',
+    itineraries: json['itineraries'] ?? [],
+  );
+}
+```
+
+## 6.상세 예외 처리 가이드
 
 통신 중 에러 발생 시 HTTP 상태 코드와 함께 아래와 같은 상세 메시지가 반환됩니다.
 
@@ -111,14 +162,7 @@ Base URL: http://localhost:8000
  
   -> 잠시 후 재시도 권장.
 
-- 500 Internal Server Error: 에이전트 또는 툴셋 오류. 터미널 로그의 X-Global-Transaction-Id를 통해 원인 파악 가능.
-
-  - X-Global-Transaction-Id가 N/A인 경우: 권한 불일치 가능성 높음. 에이전트 구축자(Builder)의 API Key를 사용했는지 체크 필요.
-
-  - X-Global-Transaction-Id가 존재하는 경우: 실행 로직 오류. Supervisor 에이전트가 하위 에이전트에게 업무를 위임하는 과정에서의 실패, 혹은 하위 에이전트에 연동된 툴셋(ex. OpenTripPlanner) 호출 중 오류가 발생했을 가능성 높음.
-  
-    -> 에이전트 간의 연결 설정 및 툴셋 API 명세 점검 필요
-
+- run_id: "null" ->  요청 중 에이전트 할당 실패. 작업 생성이 안 된 경우이므로 재시도 필요
 
 
 ---
