@@ -1,3 +1,4 @@
+import traceback
 import httpx
 import logging
 import os
@@ -9,17 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
-TIMEOUT_SEC = 60.0
-timeout = httpx.Timeout(TIMEOUT_SEC, connect=10.0, read=50.0)  #타임아웃 기준 설정(접속 10초, 데이터 전송 50초, 총 60초)
+TIMEOUT_SEC = 60.0 
+# 타임아웃 기준 설정(접속 10초, 데이터 전송 50초, 총 60초)
+timeout = httpx.Timeout(TIMEOUT_SEC, connect=10.0, read=50.0)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("오케스트레이트-백엔드")
 
+# .env 로드 및 검증
 load_dotenv()
-IBM_API_KEY = os.getenv('IBM_API_KEY')
-INSTANCE_ID = os.getenv('INSTANCE_ID')
-REGION = os.getenv("REGION", "us-south") #기본값은 댈러스로 설정함
-AGENT_ID = os.getenv("AGENT_ID")
+IBM_API_KEY = os.getenv('IBM_API_KEY', '').strip()
+BASE_URL = os.getenv('BASE_URL', '').strip().rstrip('/')
+INSTANCE_ID = os.getenv('INSTANCE_ID', '').strip()
+AGENT_ID = os.getenv("AGENT_ID", "").strip()
+AGENT_ENVIRONMENT_ID = os.getenv("AGENT_ENVIRONMENT_ID", "").strip()
 
 app = FastAPI(
     title="Watsonx 오케스트레이트 연동 서버",
@@ -35,151 +39,129 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-BASE_URL: str = f"https://api.{REGION}.watson-orchestrate.ibm.com/instances/{INSTANCE_ID}/v1/orchestrate"
-
-
 class ChatRequest(BaseModel):
     user_query: str
-
 
 class ChatResponse(BaseModel):
     status: str
     answer: str
     data: Dict[str, Any]
 
-
-#전역 예외 처리기
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"[System Error] 예기치 못한 시스템 오류 발생: {str(exc)}")
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "status": "error",
-            "message": "백엔드 서버 내부 로직 오류가 발생하였습니다.",
-            "detail": str(exc)
-        }
-    )
-
-
-# IBM Cloud IAM 토큰 발급
 async def get_ibm_token():
     if not IBM_API_KEY:
-        logger.critical("[Config Error] IBM_API_KEY가 환경 변수에 설정되지 않았습니다.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="[서버 설정 오류] API 키가 누락되었습니다. .env 파일을 확인해 주세요."
+            detail="환경 변수(IBM_API_KEY) 확인 필요"
         )
-
     url: str = "https://iam.cloud.ibm.com/identity/token"
     payload: Dict[str, str] = {
         "grant_type": "urn:ibm:params:oauth:grant-type:apikey",
         "apikey": IBM_API_KEY
     }
-
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(url, data=payload, timeout=5.0)
             response.raise_for_status()
-            token = response.json().get("access_token", "")
-            return token
+            return response.json().get("access_token", "")
         except httpx.HTTPStatusError as e:
-            logger.error(f"[Auth Error] IBM IAM 인증 실패: {e.response.text}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="[인증 오류] IBM API Key가 유효하지 않거나 만료되었습니다. .env 설정을 확인해 주세요."
-            )
+            logger.error(f"[Auth Error] 인증 실패: {e.response.text}")
+            raise HTTPException(status_code=401, detail="인증 실패")
 
-
-#메인 API -> Watsonx 오케스트레이트 챗봇 데이터 fetch
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_with_agent(request_data: ChatRequest):
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
-            # 1) IBM Cloud IAM 토큰 확보
             token = await get_ibm_token()
 
-            # 2) Watsonx 오케스트레이트 API 요청 설정
+            raw_id = INSTANCE_ID
+            if raw_id.startswith("crn:"):
+                instance_guid = raw_id.strip(":").split(":")[-1]
+            elif "_" in raw_id:
+                instance_guid = raw_id.split("_")[-1]
+            else:
+                instance_guid = raw_id
+
             headers = {
                 "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
                 "Accept": "application/json",
-                "Content-Type": "application/json"
+                "X-Watson-Orchestrate-Service-Instance-Id": instance_guid,
+                "X-Watson-Orchestrate-Agent-Id": (AGENT_ID or "").strip(),
+                "X-Watson-Orchestrate-Agent-Environment-Id": (AGENT_ENVIRONMENT_ID or "").strip(),
             }
 
-            # 2-1) 엔드포인트 설정
-            endpoint = f"{BASE_URL}/agents/{AGENT_ID}/chat"
+            base_url_str = str(BASE_URL).strip().rstrip('/')
+            endpoint = f"{base_url_str}/v2/chat?version=2024-03-14"
+
+            logger.info(f"Target URL: {endpoint}")
+            logger.info(f"Final GUID used: '{instance_guid}'")
+            
             payload = {
-                "input": request_data.user_query,
-                "context": {}
+                "input": {
+                    "message_type": "text",
+                    "text": request_data.user_query
+                },
+                "user": {
+                    "id": "test_user_001"
+                }
             }
 
-            logger.info(f"[Request] Watsonx 오케스트레이트 데이터 Fetch 시도: {request_data.user_query}")
-
-            # 3) Watsonx 오케스트레이트 서버 통신
-            response = await client.post(endpoint, json=payload, headers=headers, timeout=timeout)
-
-            # 3-1) 응답 상태 확인 및 예외 발생
+            logger.info(f"Sending Headers: {headers}")
+            logger.info(f"[Request] Watsonx Fetch 시도: {request_data.user_query}")
+            
+            response = await client.post(endpoint, json=payload, headers=headers)
+            
             response.raise_for_status()
 
-            # 4) 데이터 가공
             result = response.json()
-            results = result.get("results", [])
-
             
-            answer = result.get("output", "")
+            answer_list = []
+            generic_list = result.get("output", {}).get("generic", [])
+            
+            for item in generic_list:
+                res_type = item.get("response_type")
+                if res_type == "text":
+                    answer_list.append(item.get("text", ""))
+                elif res_type == "option":
+                    answer_list.append(item.get("title", ""))
+                elif res_type == "user_defined":
+                    answer_list.append("[구조화된 데이터 응답 포함]")
 
-            if results and len(results) > 0:
-                inner_data = results[0].get("data", {})
-                
-                # 결과 텍스트가 없을 경우 내부 데이터에서 탐색
-                if not answer:
-                    answer = inner_data.get("output", "")
-                
-                # 경로 데이터가 포함된 경우의 처리 (ex. OpenTripPlanner Agent의 호출)
-                if not answer and "trip" in inner_data:
-                    answer = "경로 탐색 결과가 도착했습니다. 상세 데이터를 확인해 주세요."
-                
-                logger.info("[Success] 도구(Skill) 실행 데이터 포함 응답 완료")
-            else:
-                # 일반적인 응답이 존재하지 않는 경우
-                if not answer:
-                    answer = "에이전트로부터 응답이 없습니다."
-                logger.info("[Success] 일반 대화 응답 완료")
+            answer = "\n".join(filter(None, answer_list)).strip()
 
-            logger.info("[Success] Watsonx 오케스트레이트 데이터 Fetch 완료")
+            if not answer:
+                answer = "에이전트로부터 응답이 없습니다."
 
-            return {
-                "status": "success",
-                "answer": answer,
-                "data": result
-            }
-
-        # 5) 상세 예외 처리
+            return {"status": "success", "answer": answer, "data": result}
+        
         except httpx.ConnectError:
             logger.error("[Connect Error] Watsonx 오케스트레이트 서버 연결 불가.")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="[연결 오류] IBM Cloud 서버에 접속할 수 없습니다. 네트워크를 확인하고 다시 시도해 주세요."
+                detail="[연결 오류] IBM Cloud 서버에 접속할 수 없습니다. 네트워크를 확인해 주세요."
             )
 
         except httpx.TimeoutException:
-            logger.error(f"[Timeout Error] Watsonx 오케스트레이트 서버 응답 시간 초과(설정 기간: {TIMEOUT_SEC}s).")
+            logger.error(f"[Timeout Error] 서버 응답 시간 초과 (기준: {TIMEOUT_SEC}s).")
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                detail=f"[시간 초과] 에이전트가 {int(TIMEOUT_SEC)}초 내에 응답하지 않았습니다. 잠시 후 다시 시도해 주세요."
+                detail=f"[시간 초과] 에이전트가 {int(TIMEOUT_SEC)}초 내에 응답하지 않았습니다."
             )
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"[Status Error] Watsonx 오케스트레이트 API 오류 코드: {e.response.status_code}")
+            logger.error(f"IBM API 실패: {e.response.status_code} - {e.response.text}")
             raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"[서비스 오류] Watsonx 오케스트레이트 시스템 에러가 발생했습니다. (오류 코드: {e.response.status_code})"
+                status_code=e.response.status_code, 
+                detail=f"Watsonx API 오류: {e.response.text}"
             )
 
         except Exception as e:
-            logger.error(f"[Unexpected Error] 비즈니스 로직 처리 중 예상치 못한 오류 발생: {str(e)}")
-            raise e
-
+            logger.error(f"[Unexpected Error]: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"서버 내부 오류 발생: {str(e)}"
+            )
 
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
