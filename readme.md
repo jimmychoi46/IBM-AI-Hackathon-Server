@@ -16,21 +16,22 @@ pip install fastapi==0.115.6 uvicorn==0.34.0 httpx==0.28.1 python-dotenv==1.0.1
 
 프로젝트 루트 디렉토리에 .env 파일을 생성하고, 아래 항목에 정보를 입력하세요.
 
-※ 해당 부분은 해당 에이전트를 구축한 담당자의 정보를 입력해주시길 바랍니다.
+※ 해당 부분은 해당 에이전트를 구축한 담당자의 정보를 입력해주시길 바랍니다. (특히 API_key는 에이전트 구축자의 것을 사용하는 것을 권장함)
 
 
 ### IBM Cloud 인증 및 인스턴스 정보
 
-IBM_API_KEY=your_actual_api_key_here
+IBM_API_KEY=당신의_API_key
 
-INSTANCE_ID=your_actual_instance_id_here
+INSTANCE_ID=당신의_인스턴스_ID
 
 ### 서비스 리전 (기본값: us-south)
 REGION=us-south
 
 ### Watsonx 오케스트레이트 에이전트 정보 (Supervisor Agent의 Agent ID 사용 권장)
-AGENT_ID=your_actual_agent_id_here
+AGENT_ID=당신의_에이전트_id
 
+AGENT_ENVIRONMENT_ID=당신의_에이전트_environment_id # 필요 시
 
 ## 3. 서버 실행 방법
 
@@ -58,7 +59,7 @@ Base URL: http://localhost:8000
 
    - user_query (String): 챗봇에게 전달할 사용자 질문 메시지
 
-2) JSON 요청 예시 (JSON 응답과의 통일성 유지를 위해 마찬가지로 OpenTripPlanner Agent의 instruction에서 발췌 후 일부 수정) 
+2) JSON 요청 예시 (JSON 응답과의 통일성 유지를 위해 마찬가지로 OpenTripPlanner Agent의 instruction에서 발췌 후 일부 수정[예시는 실제와 다를 수 있음]) 
 
 ```json
    {
@@ -75,7 +76,7 @@ Base URL: http://localhost:8000
 
    - data (Object): Watsonx 오케스트레이트 원본 데이터
 
-2) JSON 응답 예시 (OpenTripPlanner Agent의 instruction에서 발췌 후 일부 수정)
+2) JSON 응답 예시 (OpenTripPlanner Agent의 instruction에서 발췌 후 일부 수정[예시는 실제와 다를 수 있음])
 
 
 ```json
@@ -110,7 +111,13 @@ Base URL: http://localhost:8000
  
   -> 잠시 후 재시도 권장.
 
-- 500 Internal Server Error: Unexpected Error(백엔드 내부 로직 오류 발생)
+- 500 Internal Server Error: 에이전트 또는 툴셋 오류. 터미널 로그의 X-Global-Transaction-Id를 통해 원인 파악 가능.
+
+  - X-Global-Transaction-Id가 N/A인 경우: 권한 불일치 가능성 높음. 에이전트 구축자(Builder)의 API Key를 사용했는지 체크 필요.
+
+  - X-Global-Transaction-Id가 존재하는 경우: 실행 로직 오류. Supervisor 에이전트가 하위 에이전트에게 업무를 위임하는 과정에서의 실패, 혹은 하위 에이전트에 연동된 툴셋(ex. OpenTripPlanner) 호출 중 오류가 발생했을 가능성 높음.
+  
+    -> 에이전트 간의 연결 설정 및 툴셋 API 명세 점검 필요
 
 
 
